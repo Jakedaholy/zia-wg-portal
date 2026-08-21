@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Zia Config Generator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="gen-page">
+  <div class="wrap">
+    <header>
+      <h1>Zia <span>WireGuard</span> Generator</h1>
+      <p class="sub">One-time MLBB device switch configs · 3h expiry</p>
+    </header>
+
+    <section class="card">
+      <button id="genBtn" class="btn primary">
+        <span class="btn-text">Generate Config</span>
+        <span class="btn-loader" hidden>Generating…</span>
+      </button>
+
+      <div id="result" class="result" hidden>
+        <div class="result-row">
+          <span class="ico">📁</span>
+          <span>WireGuard Config: <strong id="rName">—</strong></span>
+        </div>
+        <div class="result-row">
+          <span class="ico">🚀</span>
+          <span>Next Step: Open Login Site</span>
+        </div>
+        <div class="result-row">
+          <span class="ico">🔗</span>
+          <span>Login Here: <a id="rLink" href="#" target="_blank">—</a></span>
+        </div>
+        <div class="result-row">
+          <span class="ico">⏰</span>
+          <span>Expires: <strong id="rExp">—</strong></span>
+        </div>
+        <div class="actions">
+          <a id="dlBtn" class="btn secondary" href="#">Download .conf</a>
+          <button id="copyBtn" class="btn ghost">Copy Link</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card muted">
+      <h2>How it works</h2>
+      <ol class="steps">
+        <li>Generate &amp; download the <code>zia_xxx.conf</code></li>
+        <li>Import into WireGuard → turn VPN <strong>ON</strong></li>
+        <li>Open the login link (only reachable while on that VPN)</li>
+        <li>Open MLBB first (site detects device)</li>
+        <li>Paste target <code>and_</code> device ID + choose server</li>
+        <li>Check → see Player ID / Server / IGN</li>
+        <li>Apply Changes → success (or try another ID if banned)</li>
+        <li>Turn VPN off → clear MLBB → reopen → switched</li>
+      </ol>
+      <p class="note">Configs expire after <strong>3 hours</strong>. Successful switch = one-time use (site goes down). Banned IDs = unlimited retry.</p>
+    </section>
+  </div>
+
+  <script>
+    const genBtn = document.getElementById("genBtn");
+    const result = document.getElementById("result");
+    const rName = document.getElementById("rName");
+    const rLink = document.getElementById("rLink");
+    const rExp = document.getElementById("rExp");
+    const dlBtn = document.getElementById("dlBtn");
+    const copyBtn = document.getElementById("copyBtn");
+
+    genBtn.addEventListener("click", async () => {
+      const text = genBtn.querySelector(".btn-text");
+      const loader = genBtn.querySelector(".btn-loader");
+      text.hidden = true;
+      loader.hidden = false;
+      genBtn.disabled = true;
+      try {
+        const res = await fetch("/generate", { method: "POST" });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Failed");
+        rName.textContent = data.name;
+        rLink.href = data.local_login;
+        rLink.textContent = data.login_url;
+        rExp.textContent = data.expires;
+        dlBtn.href = data.download;
+        result.hidden = false;
+        copyBtn.onclick = () => {
+          navigator.clipboard.writeText(data.local_login);
+          copyBtn.textContent = "Copied!";
+          setTimeout(() => (copyBtn.textContent = "Copy Link"), 1500);
+        };
+      } catch (e) {
+        alert(e.message || "Generate failed");
+      } finally {
+        text.hidden = false;
+        loader.hidden = true;
+        genBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

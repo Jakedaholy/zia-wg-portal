@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MLBB Login · {{ name }}</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="login-page">
+  <div class="wrap narrow">
+    <header>
+      <div class="badge">ZIA SWITCH</div>
+      <h1>Device Login</h1>
+      <p class="sub">Config: <code>{{ name }}.conf</code> · Expires {{ expires }}</p>
+    </header>
+
+    <!-- Gate: MLBB must be "open" (user confirms) -->
+    <section class="card gate-card" id="gateCard">
+      <p class="warn" id="gateWarn">Device ID not found — connect to MLBB first!</p>
+      <p class="hint">Turn on this VPN config, open Mobile Legends, then continue.</p>
+      <label class="toggle-row">
+        <input type="checkbox" id="mlbbOpen" />
+        <span>I opened MLBB while on this VPN</span>
+      </label>
+      <button id="continueBtn" class="btn primary" disabled>Continue</button>
+    </section>
+
+    <!-- Main form (hidden until gate passed) -->
+    <section class="card form-card" id="formCard" hidden>
+      <label class="field">
+        <span>Device ID</span>
+        <input type="text" id="deviceId" placeholder="and_xxxxxxxx..." autocomplete="off" spellcheck="false" />
+      </label>
+
+      <label class="field">
+        <span>Server Region</span>
+        <div class="server-grid" id="serverGrid">
+          <button type="button" class="server-btn active" data-server="Global">Global</button>
+          <button type="button" class="server-btn" data-server="Indo">Indo</button>
+          <button type="button" class="server-btn" data-server="PH">PH</button>
+          <button type="button" class="server-btn" data-server="MY">MY</button>
+          <button type="button" class="server-btn" data-server="SG">SG</button>
+          <button type="button" class="server-btn" data-server="RU">RU</button>
+        </div>
+      </label>
+
+      <button id="checkBtn" class="btn secondary">
+        <span class="btn-text">Check Device ID</span>
+        <span class="btn-loader" hidden>Checking…</span>
+      </button>
+
+      <div id="checkResult" class="check-result" hidden>
+        <div class="ok-line" id="okLine">Success!</div>
+        <div class="info-grid">
+          <div><span class="lbl">Player ID</span><strong id="pId">—</strong></div>
+          <div><span class="lbl">Server ID</span><strong id="pSrv">—</strong></div>
+          <div><span class="lbl">IGN</span><strong id="pIgn">—</strong></div>
+          <div><span class="lbl">Ban</span><strong id="pBan">—</strong></div>
+        </div>
+        <p class="next-hint" id="nextHint">Now click Apply Changes to login!</p>
+      </div>
+
+      <div id="errorBox" class="error-box" hidden></div>
+
+      <button id="applyBtn" class="btn primary" disabled>
+        <span class="btn-text">Apply Changes</span>
+        <span class="btn-loader" hidden>Processing…</span>
+      </button>
+    </section>
+
+    <section class="card success-card" id="successCard" hidden>
+      <div class="success-icon">✓</div>
+      <h2>Switch Successful</h2>
+      <p>Turn off the VPN config, clear MLBB data / cache, then reopen the game.</p>
+      <div class="info-grid">
+        <div><span class="lbl">Player ID</span><strong id="sId">—</strong></div>
+        <div><span class="lbl">Server ID</span><strong id="sSrv">—</strong></div>
+        <div><span class="lbl">IGN</span><strong id="sIgn">—</strong></div>
+      </div>
+      <p class="muted-note">This config is now one-time used and the login page is offline.</p>
+    </section>
+  </div>
+
+  <script>
+    const NAME = {{ name|tojson }};
+    let selectedServer = "Global";
+    let lastCheck = null;
+
+    const gateCard = document.getElementById("gateCard");
+    const formCard = document.getElementById("formCard");
+    const successCard = document.getElementById("successCard");
+    const mlbbOpen = document.getElementById("mlbbOpen");
+    const continueBtn = document.getElementById("continueBtn");
+    const deviceId = document.getElementById("deviceId");
+    const checkBtn = document.getElementById("checkBtn");
+    const applyBtn = document.getElementById("applyBtn");
+    const checkResult = document.getElementById("checkResult");
+    const errorBox = document.getElementById("errorBox");
+
+    mlbbOpen.addEventListener("change", () => {
+      continueBtn.disabled = !mlbbOpen.checked;
+    });
+    continueBtn.addEventListener("click", () => {
+      gateCard.hidden = true;
+      formCard.hidden = false;
+      deviceId.focus();
+    });
+
+    document.querySelectorAll(".server-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".server-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        selectedServer = btn.dataset.server;
+      });
+    });
+
+    function setLoading(btn, on) {
+      const t = btn.querySelector(".btn-text");
+      const l = btn.querySelector(".btn-loader");
+      btn.disabled = on;
+      if (t) t.hidden = on;
+      if (l) l.hidden = !on;
+    }
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.hidden = false;
+      checkResult.hidden = true;
+      applyBtn.disabled = true;
+    }
+    function hideError() {
+      errorBox.hidden = true;
+    }
+
+    checkBtn.addEventListener("click", async () => {
+      hideError();
+      const id = deviceId.value.trim();
+      if (!id || id.length < 12) {
+        showError("Paste a valid and_ / ios_ device ID");
+        return;
+      }
+      setLoading(checkBtn, true);
+      try {
+        const res = await fetch("/api/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: NAME, device_id: id, server: selectedServer }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showError(data.error || data.hint || "Check failed");
+          lastCheck = null;
+          return;
+        }
+        lastCheck = data;
+        document.getElementById("pId").textContent = data.player_id || "—";
+        document.getElementById("pSrv").textContent = data.server_id || "—";
+        document.getElementById("pIgn").textContent = data.ign || "—";
+        document.getElementById("pBan").textContent = data.ban_status || "—";
+        document.getElementById("okLine").textContent = data.banned
+          ? "Found — but BANNED"
+          : "Success!";
+        document.getElementById("nextHint").textContent = data.banned
+          ? "Banned. You can still try Apply (or paste another device ID)."
+          : "Now click Apply Changes to login!";
+        checkResult.hidden = false;
+        applyBtn.disabled = false;
+      } catch (e) {
+        showError(e.message || "Network error");
+      } finally {
+        setLoading(checkBtn, false);
+      }
+    });
+
+    applyBtn.addEventListener("click", async () => {
+      hideError();
+      const id = deviceId.value.trim();
+      if (!id) {
+        showError("Device ID required");
+        return;
+      }
+      setLoading(applyBtn, true);
+      try {
+        const res = await fetch("/api/apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: NAME, device_id: id, server: selectedServer }),
+        });
+        const data = await res.json();
+
+        if (data.banned) {
+          showError(data.error || "Banned — try another device ID");
+          applyBtn.disabled = false;
+          return;
+        }
+        if (!data.ok) {
+          showError(data.error || "Apply failed");
+          return;
+        }
+
+        // Success → one-time, take form down
+        formCard.hidden = true;
+        document.getElementById("sId").textContent = data.player_id || "—";
+        document.getElementById("sSrv").textContent = data.server_id || "—";
+        document.getElementById("sIgn").textContent = data.ign || "—";
+        successCard.hidden = false;
+      } catch (e) {
+        showError(e.message || "Network error");
+      } finally {
+        setLoading(applyBtn, false);
+      }
+    });
+  </script>
+</body>
+</html>
